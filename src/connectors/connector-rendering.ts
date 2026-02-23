@@ -1,0 +1,110 @@
+/** Generate SVG path data from waypoints and curve type */
+
+export type CurveType = "straight" | "bezier" | "orthogonal";
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** Build SVG path d string from an ordered list of points */
+export function buildPath(
+  points: Point[],
+  curveType: CurveType
+): string {
+  if (points.length < 2) return "";
+
+  switch (curveType) {
+    case "straight":
+      return buildStraightPath(points);
+    case "bezier":
+      return buildBezierPath(points);
+    case "orthogonal":
+      return buildOrthogonalPath(points);
+    default:
+      return buildStraightPath(points);
+  }
+}
+
+function buildStraightPath(points: Point[]): string {
+  const [first, ...rest] = points;
+  let d = `M ${first.x} ${first.y}`;
+  for (const p of rest) {
+    d += ` L ${p.x} ${p.y}`;
+  }
+  return d;
+}
+
+function buildBezierPath(points: Point[]): string {
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+
+  const [first, ...rest] = points;
+  let d = `M ${first.x} ${first.y}`;
+
+  if (rest.length === 1) {
+    d += ` L ${rest[0].x} ${rest[0].y}`;
+    return d;
+  }
+
+  // Use cubic bezier through waypoints with computed control points
+  for (let i = 0; i < rest.length; i++) {
+    const prev = i === 0 ? first : rest[i - 1];
+    const curr = rest[i];
+    const next = i < rest.length - 1 ? rest[i + 1] : null;
+
+    if (next) {
+      // Smooth curve through waypoint
+      const cp1x = prev.x + (curr.x - prev.x) * 0.5;
+      const cp1y = prev.y + (curr.y - prev.y) * 0.5;
+      const cp2x = curr.x - (next.x - prev.x) * 0.15;
+      const cp2y = curr.y - (next.y - prev.y) * 0.15;
+      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${curr.x} ${curr.y}`;
+    } else {
+      // Last segment
+      const cp1x = prev.x + (curr.x - prev.x) * 0.5;
+      const cp1y = prev.y + (curr.y - prev.y) * 0.5;
+      d += ` Q ${cp1x} ${cp1y}, ${curr.x} ${curr.y}`;
+    }
+  }
+
+  return d;
+}
+
+function buildOrthogonalPath(points: Point[]): string {
+  if (points.length < 2) return "";
+
+  const [first, ...rest] = points;
+  let d = `M ${first.x} ${first.y}`;
+
+  let prev = first;
+  for (const curr of rest) {
+    // Route through right angles: go horizontal first, then vertical
+    const midX = curr.x;
+    const midY = prev.y;
+    d += ` L ${midX} ${midY}`;
+    d += ` L ${curr.x} ${curr.y}`;
+    prev = curr;
+  }
+
+  return d;
+}
+
+/** Build arrowhead path at the end of a line */
+export function buildArrowhead(
+  from: Point,
+  to: Point,
+  size: number = 10
+): string {
+  const angle = Math.atan2(to.y - from.y, to.x - from.x);
+  const left = {
+    x: to.x - size * Math.cos(angle - Math.PI / 6),
+    y: to.y - size * Math.sin(angle - Math.PI / 6),
+  };
+  const right = {
+    x: to.x - size * Math.cos(angle + Math.PI / 6),
+    y: to.y - size * Math.sin(angle + Math.PI / 6),
+  };
+  return `M ${left.x} ${left.y} L ${to.x} ${to.y} L ${right.x} ${right.y}`;
+}

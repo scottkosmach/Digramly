@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node:*)",
+      "Bash(npm --version:*)",
+      "Bash(npx --version)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:tldraw.dev)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git -C \"C:\\\\Users\\\\scott\\\\Desktop\\\\HTML - 1 offs\\\\Diagrams\" remote -v)",
+      "Bash(gh repo view:*)",
+      "Bash(git -C \"C:\\\\Users\\\\scott\\\\Desktop\\\\HTML - 1 offs\\\\Diagrams\" log --oneline -5)",
+      "Bash(git -C \"C:\\\\Users\\\\scott\\\\Desktop\\\\HTML - 1 offs\\\\Diagrams\" show --stat HEAD)",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --app --src-dir --eslint --no-turbopack --use-npm --import-alias \"@/*\")",
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(where npm)",
+      "Bash(where:*)",
+      "Bash(ls:*)",
+      "Bash(lsof:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(head:*)",
+      "Bash(git:*)"
+    ]
+  }
+}
