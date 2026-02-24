@@ -39,4 +39,6 @@ export interface CanvasEdgeState {
   arrowEnd: "none" | "arrow";
   rawPoints?: { x: number; y: number }[];   // original freehand points
   smoothing?: number;                         // 0.0 (raw) to 1.0 (max smooth)
+  hidden?: boolean;                           // mermaid edge hidden because a freehand line overlays it
+  linkedMermaidEdgeId?: string;               // links freehand edge to its mermaid edge ("A->B")
 }

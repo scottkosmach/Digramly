@@ -9,9 +9,10 @@ interface CylinderShapeProps {
   onSelect: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onDblClick: (id: string) => void;
+  listening?: boolean;
 }
 
-export function CylinderShape({ node, isSelected, onSelect, onDragEnd, onDblClick }: CylinderShapeProps) {
+export function CylinderShape({ node, isSelected, onSelect, onDragEnd, onDblClick, listening }: CylinderShapeProps) {
   const colors = SHAPE_COLORS[node.color] ?? SHAPE_COLORS.blue;
   const { w, h } = node;
   const ry = Math.min(h * 0.15, 14); // ellipse vertical radius
@@ -29,7 +30,8 @@ export function CylinderShape({ node, isSelected, onSelect, onDragEnd, onDblClic
       id={node.id}
       x={node.x}
       y={node.y}
-      draggable
+      listening={listening !== false}
+      draggable={listening !== false}
       onClick={() => onSelect(node.id)}
       onTap={() => onSelect(node.id)}
       onDblClick={() => onDblClick(node.id)}

@@ -10,9 +10,13 @@ interface ConnectorShapeProps {
   onSelect: (id: string) => void;
   onWaypointDrag: (edgeId: string, wpIndex: number, x: number, y: number) => void;
   onEndpointDrag?: (edgeId: string, which: "start" | "end", x: number, y: number) => void;
+  listening?: boolean;
+  hidden?: boolean;
 }
 
-export function ConnectorShape({ edge, isSelected, onSelect, onWaypointDrag, onEndpointDrag }: ConnectorShapeProps) {
+export function ConnectorShape({ edge, isSelected, onSelect, onWaypointDrag, onEndpointDrag, listening, hidden }: ConnectorShapeProps) {
+  // Hidden edges render nothing — a freehand line handles visuals
+  if (hidden) return null;
   const allPoints = [edge.start, ...edge.waypoints, edge.end];
   const pathD = buildPath(allPoints, edge.curveType);
 
@@ -41,7 +45,7 @@ export function ConnectorShape({ edge, isSelected, onSelect, onWaypointDrag, onE
         stroke="transparent"
         strokeWidth={20}
         fill=""
-        listening={true}
+        listening={listening !== false}
         onClick={() => onSelect(edge.id)}
         onTap={() => onSelect(edge.id)}
       />

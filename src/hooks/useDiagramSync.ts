@@ -149,6 +149,17 @@ export function useDiagramSync() {
             edgeState.end = endpoints.end;
           }
 
+          // Check if a freehand overlay links to this mermaid edge
+          const currentOv = useDiagramStore.getState().overlay;
+          let isHidden = false;
+          for (const [, edgeOv] of Object.entries(currentOv.edges)) {
+            if (edgeOv.linkedMermaidEdgeId === edge.edgeId) {
+              isHidden = true;
+              break;
+            }
+          }
+          edgeState.hidden = isHidden;
+
           edgesToUpsert.push(edgeState);
 
           updateOverlay((prev) =>
@@ -221,6 +232,7 @@ export function useDiagramSync() {
               arrowEnd: edgeOv.arrowEnd ?? "arrow",
               rawPoints: edgeOv.rawPoints,
               smoothing: edgeOv.smoothing,
+              linkedMermaidEdgeId: edgeOv.linkedMermaidEdgeId,
             });
           }
         }

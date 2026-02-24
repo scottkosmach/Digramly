@@ -9,9 +9,10 @@ interface RoundedRectShapeProps {
   onSelect: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onDblClick: (id: string) => void;
+  listening?: boolean;
 }
 
-export function RoundedRectShape({ node, isSelected, onSelect, onDragEnd, onDblClick }: RoundedRectShapeProps) {
+export function RoundedRectShape({ node, isSelected, onSelect, onDragEnd, onDblClick, listening }: RoundedRectShapeProps) {
   const colors = SHAPE_COLORS[node.color] ?? SHAPE_COLORS.blue;
 
   return (
@@ -19,7 +20,8 @@ export function RoundedRectShape({ node, isSelected, onSelect, onDragEnd, onDblC
       id={node.id}
       x={node.x}
       y={node.y}
-      draggable
+      listening={listening !== false}
+      draggable={listening !== false}
       onClick={() => onSelect(node.id)}
       onTap={() => onSelect(node.id)}
       onDblClick={() => onDblClick(node.id)}

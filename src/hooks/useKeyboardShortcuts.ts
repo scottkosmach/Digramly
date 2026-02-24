@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { useDiagramStore } from "@/stores/diagram-store";
 import { historyManager } from "@/stores/history";
 import { removeManualEdgeFromOverlay } from "@/lib/overlay/diff";
+import { removeEdgeFromCode } from "@/lib/mermaid/code-patcher";
 import type { HistorySnapshot } from "@/stores/history";
 
 function getCurrentSnapshot(): HistorySnapshot {
@@ -86,20 +87,36 @@ export function useKeyboardShortcuts() {
           // Delete selected edges
           if (selectedEdges.size > 0) {
             const edgeIdsToRemove: string[] = [];
+            let code = store.code;
+            let codeChanged = false;
+
             for (const edgeCanvasId of selectedEdges) {
               const edge = store.canvasEdges.get(edgeCanvasId);
               if (!edge) continue;
 
-              if (edge.origin === "manual") {
-                // Remove manual edge entirely
+              if (edge.origin === "mermaid") {
+                // Mermaid edge: remove from code → re-parse will remove it
+                if (edge.sourceId && edge.targetId) {
+                  code = removeEdgeFromCode(code, edge.sourceId, edge.targetId);
+                  codeChanged = true;
+                }
+                edgeIdsToRemove.push(edgeCanvasId);
+              } else if (edge.origin === "manual") {
+                // Manual edge: remove from canvas + overlay
                 edgeIdsToRemove.push(edgeCanvasId);
                 store.updateOverlay((prev) =>
                   removeManualEdgeFromOverlay(prev, edge.edgeId)
                 );
-              } else {
-                // Mermaid edge: just deselect (can't delete code-generated edges)
-                // Could optionally hide it, but for now just deselect
+                // If linked to a mermaid edge, also remove that from code
+                if (edge.linkedMermaidEdgeId && edge.sourceId && edge.targetId) {
+                  code = removeEdgeFromCode(code, edge.sourceId, edge.targetId);
+                  codeChanged = true;
+                }
               }
+            }
+
+            if (codeChanged) {
+              store.setCode(code);
             }
             if (edgeIdsToRemove.length > 0) {
               store.removeCanvasEdges(edgeIdsToRemove);

@@ -9,6 +9,7 @@ import { useDiagramStore } from "@/stores/diagram-store";
 import { smoothFreehandPoints } from "@/lib/canvas/smoothing";
 import { computePerimeterAnchor } from "@/lib/canvas/perimeter-anchor";
 import { addManualEdgeToOverlay } from "@/lib/overlay/diff";
+import { addEdgeToCode } from "@/lib/mermaid/code-patcher";
 import { historyManager } from "@/stores/history";
 import type { CanvasEdgeState, CanvasNodeState } from "@/shapes/shape-types";
 
@@ -87,11 +88,28 @@ export function useFreehandDraw(stageRef: React.RefObject<Konva.Stage | null>) {
     const edgeId = `freehand::${crypto.randomUUID()}`;
     const canvasId = crypto.randomUUID();
 
+    const srcId = sourceNode?.nodeId ?? "";
+    const tgtId = targetNode?.nodeId ?? "";
+
+    // If both endpoints are mermaid nodes (not manual-*), add edge to mermaid code
+    const bothMermaid =
+      srcId !== "" &&
+      tgtId !== "" &&
+      !srcId.startsWith("manual-") &&
+      !tgtId.startsWith("manual-");
+
+    let linkedMermaidEdgeId: string | undefined;
+    if (bothMermaid) {
+      const newCode = addEdgeToCode(store.code, srcId, tgtId);
+      store.setCode(newCode);
+      linkedMermaidEdgeId = `${srcId}->${tgtId}`;
+    }
+
     const edge: CanvasEdgeState = {
       id: canvasId,
       edgeId,
-      sourceId: sourceNode?.nodeId ?? "",
-      targetId: targetNode?.nodeId ?? "",
+      sourceId: srcId,
+      targetId: tgtId,
       start,
       end,
       waypoints: smoothed,
@@ -103,6 +121,7 @@ export function useFreehandDraw(stageRef: React.RefObject<Konva.Stage | null>) {
       arrowEnd: "arrow",
       rawPoints,
       smoothing: DEFAULT_SMOOTHING,
+      linkedMermaidEdgeId,
     };
 
     store.upsertCanvasEdge(edge);
@@ -114,12 +133,13 @@ export function useFreehandDraw(stageRef: React.RefObject<Konva.Stage | null>) {
         curveType: "freehand",
         rawPoints,
         origin: "manual",
-        sourceId: sourceNode?.nodeId ?? "",
-        targetId: targetNode?.nodeId ?? "",
+        sourceId: srcId,
+        targetId: tgtId,
         arrowStart: "none",
         arrowEnd: "arrow",
         smoothing: DEFAULT_SMOOTHING,
         color: "#374151",
+        linkedMermaidEdgeId,
       })
     );
 

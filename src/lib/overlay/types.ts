@@ -19,6 +19,7 @@ export interface EdgeOverlay {
   arrowEnd?: "none" | "arrow";
   smoothing?: number;
   color?: string;
+  linkedMermaidEdgeId?: string;  // e.g. "A->B" — links freehand line to mermaid edge
 }
 
 export interface DiagramOverlay {

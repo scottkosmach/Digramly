@@ -11,6 +11,7 @@ import { computeEdgeEndpoints } from "@/lib/canvas/edge-tracking";
 import { computePerimeterAnchor } from "@/lib/canvas/perimeter-anchor";
 import { smoothFreehandPoints } from "@/lib/canvas/smoothing";
 import { SHAPE_DEFAULTS } from "@/shapes/shared/shape-styles";
+import { removeEdgeFromCode, addEdgeToCode } from "@/lib/mermaid/code-patcher";
 import { historyManager } from "@/stores/history";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useFreehandDraw } from "@/hooks/useFreehandDraw";
@@ -363,8 +364,56 @@ export default function CanvasPanel() {
             arrowEnd: updated.arrowEnd,
             smoothing: updated.smoothing,
             color: updated.color,
+            linkedMermaidEdgeId: edge.linkedMermaidEdgeId,
           })
         );
+
+        // Sync linked mermaid edge in code when re-anchoring
+        if (edge.linkedMermaidEdgeId) {
+          const oldSourceId = edge.sourceId;
+          const oldTargetId = edge.targetId;
+          const newSourceId = updated.sourceId;
+          const newTargetId = updated.targetId;
+
+          let code = state.code;
+          // Remove old edge from code
+          if (oldSourceId && oldTargetId) {
+            code = removeEdgeFromCode(code, oldSourceId, oldTargetId);
+          }
+          // Add new edge if both endpoints attached to mermaid nodes
+          if (newSourceId && newTargetId && !newSourceId.startsWith("manual-") && !newTargetId.startsWith("manual-")) {
+            code = addEdgeToCode(code, newSourceId, newTargetId);
+            const newLinkedId = `${newSourceId}->${newTargetId}`;
+            updated.linkedMermaidEdgeId = newLinkedId;
+            state.updateOverlay((prev) => {
+              const edgeOv = prev.edges[edge.edgeId];
+              if (!edgeOv) return prev;
+              return {
+                ...prev,
+                edges: {
+                  ...prev.edges,
+                  [edge.edgeId]: { ...edgeOv, linkedMermaidEdgeId: newLinkedId },
+                },
+              };
+            });
+          } else {
+            // No longer connecting two mermaid nodes — unlink
+            updated.linkedMermaidEdgeId = undefined;
+            state.updateOverlay((prev) => {
+              const edgeOv = prev.edges[edge.edgeId];
+              if (!edgeOv) return prev;
+              return {
+                ...prev,
+                edges: {
+                  ...prev.edges,
+                  [edge.edgeId]: { ...edgeOv, linkedMermaidEdgeId: undefined },
+                },
+              };
+            });
+          }
+          state.setCode(code);
+          state.upsertCanvasEdge(updated);
+        }
       }
     },
     []
@@ -418,6 +467,8 @@ export default function CanvasPanel() {
               onSelect={handleEdgeSelect}
               onWaypointDrag={handleWaypointDrag}
               onEndpointDrag={handleEndpointDrag}
+              listening={canvasMode !== "draw"}
+              hidden={edge.hidden}
             />
           ))}
           {/* Freehand preview while drawing */}
@@ -433,6 +484,7 @@ export default function CanvasPanel() {
               onSelect={handleSelect}
               onDragEnd={handleDragEnd}
               onDblClick={handleDblClick}
+              listening={canvasMode !== "draw"}
             />
           ))}
           <Transformer

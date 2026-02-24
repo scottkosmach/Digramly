@@ -13,6 +13,7 @@ interface ShapeRendererProps {
   onSelect: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onDblClick: (id: string) => void;
+  listening?: boolean;
 }
 
 const SHAPE_COMPONENTS: Record<NodeShapeType, React.ComponentType<{
@@ -21,6 +22,7 @@ const SHAPE_COMPONENTS: Record<NodeShapeType, React.ComponentType<{
   onSelect: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onDblClick: (id: string) => void;
+  listening?: boolean;
 }>> = {
   box: BoxShape,
   diamond: DiamondShape,
@@ -30,7 +32,7 @@ const SHAPE_COMPONENTS: Record<NodeShapeType, React.ComponentType<{
   stadium: StadiumShape,
 };
 
-export function ShapeRenderer({ node, isSelected, onSelect, onDragEnd, onDblClick }: ShapeRendererProps) {
+export function ShapeRenderer({ node, isSelected, onSelect, onDragEnd, onDblClick, listening }: ShapeRendererProps) {
   const Component = SHAPE_COMPONENTS[node.shapeType] ?? BoxShape;
   return (
     <Component
@@ -39,6 +41,7 @@ export function ShapeRenderer({ node, isSelected, onSelect, onDragEnd, onDblClic
       onSelect={onSelect}
       onDragEnd={onDragEnd}
       onDblClick={onDblClick}
+      listening={listening}
     />
   );
 }

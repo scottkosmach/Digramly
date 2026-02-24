@@ -66,3 +66,82 @@ export function patchNodeLabel(
   // No match found — return code unchanged (safe fallback)
   return code;
 }
+
+/**
+ * Remove an edge line from Mermaid flowchart code.
+ * Matches patterns like:
+ *   sourceId --> targetId
+ *   sourceId -->|label| targetId
+ *   sourceId --- targetId
+ *   sourceId -.-> targetId
+ *   etc.
+ *
+ * @returns The patched code string with the edge line removed.
+ */
+export function removeEdgeFromCode(
+  code: string,
+  sourceId: string,
+  targetId: string
+): string {
+  const src = escapeRegExp(sourceId);
+  const tgt = escapeRegExp(targetId);
+
+  // Match a full line containing sourceId <arrow> targetId
+  // Arrow patterns: -->, --->, -.->. -..-, ===, ==>, with optional |label|
+  const pattern = new RegExp(
+    `^[ \\t]*${src}\\s+` +       // sourceId + whitespace
+    `[-=.]+[>|]*` +              // arrow chars (-->, -.->. ===>, etc.)
+    `(?:\\|[^|]*\\|)?` +         // optional |label|
+    `[-=.>]*` +                  // rest of arrow
+    `\\s+${tgt}` +               // whitespace + targetId
+    `[ \\t]*(?:;.*)?$`,          // optional trailing semicolon/comment
+    "m"
+  );
+
+  const match = pattern.exec(code);
+  if (match) {
+    // Remove the matched line (and its trailing newline if present)
+    const before = code.slice(0, match.index);
+    let after = code.slice(match.index + match[0].length);
+    if (after.startsWith("\n")) after = after.slice(1);
+    else if (after.startsWith("\r\n")) after = after.slice(2);
+    return before + after;
+  }
+
+  return code;
+}
+
+/**
+ * Add an edge line to Mermaid flowchart code.
+ * Appends `    sourceId --> targetId` (with optional label) after the last
+ * node/edge line in the graph block.
+ *
+ * @returns The patched code string with the new edge line.
+ */
+export function addEdgeToCode(
+  code: string,
+  sourceId: string,
+  targetId: string,
+  label?: string
+): string {
+  const edgeLine = label
+    ? `    ${sourceId} -->|${label}| ${targetId}`
+    : `    ${sourceId} --> ${targetId}`;
+
+  // Find the last non-empty, non-comment line that looks like graph content
+  // (i.e., contains a node ID or arrow). Insert after it.
+  const lines = code.split("\n");
+  let insertIndex = lines.length;
+
+  // Walk backwards to find last content line in the graph block
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const trimmed = lines[i].trim();
+    if (trimmed === "" || trimmed.startsWith("%%")) continue;
+    // Found a content line — insert after it
+    insertIndex = i + 1;
+    break;
+  }
+
+  lines.splice(insertIndex, 0, edgeLine);
+  return lines.join("\n");
+}
