@@ -63,7 +63,11 @@ function cloneSnapshot(s: HistorySnapshot): HistorySnapshot {
     canvasEdges: new Map(
       Array.from(s.canvasEdges.entries()).map(([k, v]) => [
         k,
-        { ...v, waypoints: v.waypoints.map((wp) => ({ ...wp })) },
+        {
+          ...v,
+          waypoints: v.waypoints.map((wp) => ({ ...wp })),
+          rawPoints: v.rawPoints?.map((p) => ({ ...p })),
+        },
       ])
     ),
   };

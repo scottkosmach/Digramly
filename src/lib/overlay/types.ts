@@ -10,7 +10,15 @@ export interface NodeOverlay {
 
 export interface EdgeOverlay {
   waypoints: { x: number; y: number }[];
-  curveType: "straight" | "bezier" | "orthogonal";
+  curveType: "straight" | "bezier" | "orthogonal" | "freehand";
+  rawPoints?: { x: number; y: number }[];
+  origin?: "mermaid" | "manual";
+  sourceId?: string;
+  targetId?: string;
+  arrowStart?: "none" | "arrow";
+  arrowEnd?: "none" | "arrow";
+  smoothing?: number;
+  color?: string;
 }
 
 export interface DiagramOverlay {

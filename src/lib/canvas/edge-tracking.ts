@@ -1,11 +1,12 @@
 /** Recalculate edge endpoints based on current node positions */
 
 import type { CanvasNodeState, CanvasEdgeState } from "@/shapes/shape-types";
+import { computePerimeterAnchor } from "./perimeter-anchor";
 
 /**
- * Given source/target node positions, compute connector start/end points.
- * For TD (top-down) graphs: bottom-center of source → top-center of target.
- * Falls back to closest-side heuristic otherwise.
+ * Given source/target node positions, compute connector start/end points
+ * using shape-aware perimeter anchoring.
+ * Returns null if source or target node is missing (unattached endpoint).
  */
 export function computeEdgeEndpoints(
   edge: CanvasEdgeState,
@@ -20,43 +21,21 @@ export function computeEdgeEndpoints(
     if (n.nodeId === edge.targetId) target = n;
   }
 
-  if (!source || !target) return null;
+  // For unattached endpoints, return raw positions
+  if (!source && !target) return null;
 
-  // Determine direction based on relative positions
-  const srcCx = source.x + source.w / 2;
-  const srcCy = source.y + source.h / 2;
-  const tgtCx = target.x + target.w / 2;
-  const tgtCy = target.y + target.h / 2;
+  const srcCx = source ? source.x + source.w / 2 : edge.start.x;
+  const srcCy = source ? source.y + source.h / 2 : edge.start.y;
+  const tgtCx = target ? target.x + target.w / 2 : edge.end.x;
+  const tgtCy = target ? target.y + target.h / 2 : edge.end.y;
 
-  const dx = tgtCx - srcCx;
-  const dy = tgtCy - srcCy;
+  const start = source
+    ? computePerimeterAnchor(source, { x: tgtCx, y: tgtCy })
+    : { x: edge.start.x, y: edge.start.y };
 
-  let start: { x: number; y: number };
-  let end: { x: number; y: number };
-
-  if (Math.abs(dy) >= Math.abs(dx)) {
-    // Predominantly vertical
-    if (dy >= 0) {
-      // Target is below source
-      start = { x: srcCx, y: source.y + source.h };
-      end = { x: tgtCx, y: target.y };
-    } else {
-      // Target is above source
-      start = { x: srcCx, y: source.y };
-      end = { x: tgtCx, y: target.y + target.h };
-    }
-  } else {
-    // Predominantly horizontal
-    if (dx >= 0) {
-      // Target is right of source
-      start = { x: source.x + source.w, y: srcCy };
-      end = { x: target.x, y: tgtCy };
-    } else {
-      // Target is left of source
-      start = { x: source.x, y: srcCy };
-      end = { x: target.x + target.w, y: tgtCy };
-    }
-  }
+  const end = target
+    ? computePerimeterAnchor(target, { x: srcCx, y: srcCy })
+    : { x: edge.end.x, y: edge.end.y };
 
   return { start, end };
 }

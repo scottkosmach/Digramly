@@ -25,13 +25,18 @@ export interface CanvasNodeState {
 
 export interface CanvasEdgeState {
   id: string;
-  edgeId: string;         // Mermaid edge ID ("sourceId->targetId")
-  sourceId: string;
-  targetId: string;
+  edgeId: string;         // Mermaid edge ID ("sourceId->targetId") or "freehand::uuid"
+  sourceId: string;       // Mermaid node ID or "" for unattached
+  targetId: string;       // Mermaid node ID or "" for unattached
   start: { x: number; y: number };
   end: { x: number; y: number };
   waypoints: { x: number; y: number }[];
   curveType: CurveType;
   label: string;
   color: string;
+  origin: "mermaid" | "manual";
+  arrowStart: "none" | "arrow";
+  arrowEnd: "none" | "arrow";
+  rawPoints?: { x: number; y: number }[];   // original freehand points
+  smoothing?: number;                         // 0.0 (raw) to 1.0 (max smooth)
 }

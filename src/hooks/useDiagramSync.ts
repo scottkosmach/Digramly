@@ -137,6 +137,9 @@ export function useDiagramSync() {
             curveType: edge.curveType,
             label: edge.label,
             color: "#374151",
+            origin: "mermaid",
+            arrowStart: "none",
+            arrowEnd: "arrow",
           };
 
           // Use edge-tracking for smarter endpoint placement
@@ -190,6 +193,39 @@ export function useDiagramSync() {
           updateOverlay((prev) =>
             cleanupOverlay(prev, mergeResult.removedNodeIds, mergeResult.removedEdgeIds)
           );
+        }
+
+        // --- Rehydrate freehand (manual) edges from overlay ---
+        const currentOverlay = useDiagramStore.getState().overlay;
+        const freehandEdges: CanvasEdgeState[] = [];
+        for (const [edgeKey, edgeOv] of Object.entries(currentOverlay.edges)) {
+          if (edgeKey.startsWith("freehand::") && edgeOv.origin === "manual") {
+            let canvasId = edgeIdMapRef.current.get(edgeKey);
+            if (!canvasId) {
+              canvasId = crypto.randomUUID();
+              edgeIdMapRef.current.set(edgeKey, canvasId);
+            }
+            freehandEdges.push({
+              id: canvasId,
+              edgeId: edgeKey,
+              sourceId: edgeOv.sourceId ?? "",
+              targetId: edgeOv.targetId ?? "",
+              start: edgeOv.waypoints[0] ?? { x: 0, y: 0 },
+              end: edgeOv.waypoints[edgeOv.waypoints.length - 1] ?? { x: 0, y: 0 },
+              waypoints: edgeOv.waypoints,
+              curveType: edgeOv.curveType ?? "freehand",
+              label: "",
+              color: edgeOv.color ?? "#374151",
+              origin: "manual",
+              arrowStart: edgeOv.arrowStart ?? "none",
+              arrowEnd: edgeOv.arrowEnd ?? "arrow",
+              rawPoints: edgeOv.rawPoints,
+              smoothing: edgeOv.smoothing,
+            });
+          }
+        }
+        if (freehandEdges.length > 0) {
+          upsertCanvasEdges(freehandEdges);
         }
 
         // Update staging

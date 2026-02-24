@@ -6,38 +6,50 @@ import type Konva from "konva";
 import { useDiagramStore } from "@/stores/diagram-store";
 import { ShapeRenderer } from "@/shapes/konva/ShapeRenderer";
 import { ConnectorShape } from "@/shapes/konva/ConnectorShape";
-import { updateNodeInOverlay, updateEdgeInOverlay } from "@/lib/overlay/diff";
+import { updateNodeInOverlay, updateEdgeInOverlay, addManualEdgeToOverlay } from "@/lib/overlay/diff";
 import { computeEdgeEndpoints } from "@/lib/canvas/edge-tracking";
+import { computePerimeterAnchor } from "@/lib/canvas/perimeter-anchor";
+import { smoothFreehandPoints } from "@/lib/canvas/smoothing";
 import { SHAPE_DEFAULTS } from "@/shapes/shared/shape-styles";
 import { historyManager } from "@/stores/history";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useFreehandDraw } from "@/hooks/useFreehandDraw";
 import { SyncBridge } from "./SyncBridge";
 import { InlineEditor } from "./InlineEditor";
 import { ShapePalette } from "@/ui/ShapePalette";
+import { DrawModeToggle } from "@/ui/DrawModeToggle";
+import { EdgeToolbar } from "@/ui/EdgeToolbar";
+import { FreehandPreview } from "./FreehandPreview";
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 const ZOOM_SPEED = 1.1;
+const SNAP_THRESHOLD = 20;
 
 export default function CanvasPanel() {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
+  const [previewPoints, setPreviewPoints] = useState<{ x: number; y: number }[]>([]);
 
   const canvasNodes = useDiagramStore((s) => s.canvasNodes);
   const canvasEdges = useDiagramStore((s) => s.canvasEdges);
   const selectedNodeIds = useDiagramStore((s) => s.selectedNodeIds);
+  const selectedEdgeIds = useDiagramStore((s) => s.selectedEdgeIds);
+  const canvasMode = useDiagramStore((s) => s.canvasMode);
   const selectNode = useDiagramStore((s) => s.selectNode);
+  const selectEdge = useDiagramStore((s) => s.selectEdge);
   const deselectAll = useDiagramStore((s) => s.deselectAll);
   const upsertCanvasNode = useDiagramStore((s) => s.upsertCanvasNode);
   const upsertCanvasEdge = useDiagramStore((s) => s.upsertCanvasEdge);
   const updateOverlay = useDiagramStore((s) => s.updateOverlay);
 
-  // Track which edge is selected (separate from node selection)
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  // Freehand drawing hook
+  const { isDrawing, rawPoints, startDraw, continueDraw, endDraw } =
+    useFreehandDraw(stageRef);
 
-  // Keyboard shortcuts (Delete, Ctrl+Z, Ctrl+Y, Escape)
+  // Keyboard shortcuts (Delete, Ctrl+Z, Ctrl+Y, Escape, D)
   useKeyboardShortcuts();
 
   // ResizeObserver
@@ -72,6 +84,19 @@ export default function CanvasPanel() {
     transformer.getLayer()?.batchDraw();
   }, [selectedNodeIds, canvasNodes]);
 
+  // Helper: get stage-space coordinates from pointer
+  const getStagePointer = useCallback((): { x: number; y: number } | null => {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return null;
+    const scale = stage.scaleX();
+    return {
+      x: (pointer.x - stage.x()) / scale,
+      y: (pointer.y - stage.y()) / scale,
+    };
+  }, []);
+
   // Wheel zoom
   const handleWheel = useCallback((e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
@@ -101,33 +126,64 @@ export default function CanvasPanel() {
     stage.batchDraw();
   }, []);
 
-  // Click background → deselect
-  const handleStageClick = useCallback(
+  // Click background → deselect (or start drawing)
+  const handleStageMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+      if (canvasMode === "draw") {
+        const pt = getStagePointer();
+        if (pt) {
+          startDraw(pt.x, pt.y);
+          setPreviewPoints([pt]);
+        }
+        return;
+      }
+
       if (e.target === e.target.getStage()) {
         deselectAll();
-        setSelectedEdgeId(null);
       }
     },
-    [deselectAll]
+    [canvasMode, deselectAll, getStagePointer, startDraw]
+  );
+
+  const handleStageMouseMove = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+      if (canvasMode !== "draw" || !isDrawing.current) return;
+      const pt = getStagePointer();
+      if (pt) {
+        const pts = continueDraw(pt.x, pt.y);
+        if (pts) {
+          setPreviewPoints([...pts]);
+        }
+      }
+    },
+    [canvasMode, isDrawing, getStagePointer, continueDraw]
+  );
+
+  const handleStageMouseUp = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+      if (canvasMode !== "draw" && !isDrawing.current) return;
+      endDraw();
+      setPreviewPoints([]);
+    },
+    [canvasMode, isDrawing, endDraw]
   );
 
   // Shape select
   const handleSelect = useCallback(
     (id: string) => {
+      if (canvasMode === "draw") return;
       selectNode(id);
-      setSelectedEdgeId(null);
     },
-    [selectNode]
+    [selectNode, canvasMode]
   );
 
   // Edge select
   const handleEdgeSelect = useCallback(
     (id: string) => {
-      setSelectedEdgeId(id);
-      deselectAll();
+      if (canvasMode === "draw") return;
+      selectEdge(id);
     },
-    [deselectAll]
+    [selectEdge, canvasMode]
   );
 
   // Shape drag end → update store + overlay + recompute edges
@@ -238,6 +294,82 @@ export default function CanvasPanel() {
     [upsertCanvasEdge, updateOverlay]
   );
 
+  // Endpoint drag on connector
+  const handleEndpointDrag = useCallback(
+    (edgeId: string, which: "start" | "end", x: number, y: number) => {
+      const state = useDiagramStore.getState();
+      const edge = state.canvasEdges.get(edgeId);
+      if (!edge) return;
+
+      // Push history on first drag
+      historyManager.push({
+        overlay: state.overlay,
+        canvasNodes: state.canvasNodes,
+        canvasEdges: state.canvasEdges,
+      });
+
+      // Snap detect
+      const zoom = stageRef.current?.scaleX() ?? 1;
+      const snapDist = SNAP_THRESHOLD / zoom;
+      let snappedNode: { nodeId: string; node: typeof node } | null = null;
+      let node: ReturnType<typeof findNearestNode> = null;
+
+      for (const n of state.canvasNodes.values()) {
+        const cx = n.x + n.w / 2;
+        const cy = n.y + n.h / 2;
+        const margin = snapDist;
+        if (
+          x >= n.x - margin &&
+          x <= n.x + n.w + margin &&
+          y >= n.y - margin &&
+          y <= n.y + n.h + margin
+        ) {
+          node = n;
+          snappedNode = { nodeId: n.nodeId, node: n };
+          break;
+        }
+      }
+
+      const updated = { ...edge };
+      if (which === "start") {
+        updated.sourceId = snappedNode?.nodeId ?? "";
+        if (snappedNode && node) {
+          updated.start = computePerimeterAnchor(node, edge.end);
+        } else {
+          updated.start = { x, y };
+        }
+      } else {
+        updated.targetId = snappedNode?.nodeId ?? "";
+        if (snappedNode && node) {
+          updated.end = computePerimeterAnchor(node, edge.start);
+        } else {
+          updated.end = { x, y };
+        }
+      }
+
+      state.upsertCanvasEdge(updated);
+
+      // Update overlay
+      if (edge.origin === "manual") {
+        state.updateOverlay((prev) =>
+          addManualEdgeToOverlay(prev, edge.edgeId, {
+            waypoints: updated.waypoints,
+            curveType: updated.curveType,
+            rawPoints: updated.rawPoints,
+            origin: "manual",
+            sourceId: updated.sourceId,
+            targetId: updated.targetId,
+            arrowStart: updated.arrowStart,
+            arrowEnd: updated.arrowEnd,
+            smoothing: updated.smoothing,
+            color: updated.color,
+          })
+        );
+      }
+    },
+    []
+  );
+
   // Double-click shape → open inline editor
   const handleDblClick = useCallback((id: string) => {
     const startEditing = (window as any).__inlineEditorStart;
@@ -246,6 +378,10 @@ export default function CanvasPanel() {
 
   const nodes = Array.from(canvasNodes.values());
   const edges = Array.from(canvasEdges.values());
+
+  // Get selected edge for toolbar positioning
+  const selectedEdgeId = selectedEdgeIds.size > 0 ? Array.from(selectedEdgeIds)[0] : null;
+  const selectedEdge = selectedEdgeId ? canvasEdges.get(selectedEdgeId) ?? null : null;
 
   return (
     <div
@@ -256,16 +392,21 @@ export default function CanvasPanel() {
         position: "relative",
         overflow: "hidden",
         background: "#f8f9fa",
+        cursor: canvasMode === "draw" ? "crosshair" : "default",
       }}
     >
       <Stage
         ref={stageRef}
         width={size.width}
         height={size.height}
-        draggable
+        draggable={canvasMode !== "draw"}
         onWheel={handleWheel}
-        onClick={handleStageClick}
-        onTap={handleStageClick}
+        onMouseDown={handleStageMouseDown}
+        onMouseMove={handleStageMouseMove}
+        onMouseUp={handleStageMouseUp}
+        onTouchStart={handleStageMouseDown}
+        onTouchMove={handleStageMouseMove}
+        onTouchEnd={handleStageMouseUp}
       >
         <Layer>
           {/* Connectors rendered first (behind nodes) */}
@@ -273,11 +414,16 @@ export default function CanvasPanel() {
             <ConnectorShape
               key={edge.id}
               edge={edge}
-              isSelected={selectedEdgeId === edge.id}
+              isSelected={selectedEdgeIds.has(edge.id)}
               onSelect={handleEdgeSelect}
               onWaypointDrag={handleWaypointDrag}
+              onEndpointDrag={handleEndpointDrag}
             />
           ))}
+          {/* Freehand preview while drawing */}
+          {canvasMode === "draw" && previewPoints.length > 1 && (
+            <FreehandPreview points={previewPoints} />
+          )}
           {/* Nodes */}
           {nodes.map((node) => (
             <ShapeRenderer
@@ -318,8 +464,31 @@ export default function CanvasPanel() {
         </Layer>
       </Stage>
       <ShapePalette />
+      <DrawModeToggle />
+      {selectedEdge && (
+        <EdgeToolbar edge={selectedEdge} stageRef={stageRef} />
+      )}
       <InlineEditor stageRef={stageRef} />
       <SyncBridge />
     </div>
   );
+}
+
+function findNearestNode(
+  point: { x: number; y: number },
+  nodes: Map<string, any>,
+  maxDist: number
+) {
+  for (const n of nodes.values()) {
+    const margin = maxDist;
+    if (
+      point.x >= n.x - margin &&
+      point.x <= n.x + n.w + margin &&
+      point.y >= n.y - margin &&
+      point.y <= n.y + n.h + margin
+    ) {
+      return n;
+    }
+  }
+  return null;
 }

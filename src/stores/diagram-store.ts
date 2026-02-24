@@ -56,7 +56,13 @@ interface DiagramState {
   selectedNodeIds: Set<string>;
   setSelectedNodeIds: (ids: Set<string>) => void;
   selectNode: (id: string) => void;
+  selectedEdgeIds: Set<string>;
+  selectEdge: (id: string) => void;
   deselectAll: () => void;
+
+  // Canvas mode
+  canvasMode: "select" | "draw";
+  setCanvasMode: (mode: "select" | "draw") => void;
 
   // Staging area
   stagedNodes: StagedNode[];
@@ -138,8 +144,14 @@ export const useDiagramStore = create<DiagramState>((set) => ({
   // Selection
   selectedNodeIds: new Set(),
   setSelectedNodeIds: (ids) => set({ selectedNodeIds: ids }),
-  selectNode: (id) => set({ selectedNodeIds: new Set([id]) }),
-  deselectAll: () => set({ selectedNodeIds: new Set() }),
+  selectNode: (id) => set({ selectedNodeIds: new Set([id]), selectedEdgeIds: new Set() }),
+  selectedEdgeIds: new Set(),
+  selectEdge: (id) => set({ selectedEdgeIds: new Set([id]), selectedNodeIds: new Set() }),
+  deselectAll: () => set({ selectedNodeIds: new Set(), selectedEdgeIds: new Set() }),
+
+  // Canvas mode
+  canvasMode: "select" as const,
+  setCanvasMode: (canvasMode) => set({ canvasMode }),
 
   // Staging
   stagedNodes: [],

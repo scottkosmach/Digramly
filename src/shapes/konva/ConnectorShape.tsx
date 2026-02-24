@@ -1,7 +1,7 @@
 import React from "react";
 import { Group, Path, Circle, Rect, Text } from "react-konva";
 import type { CanvasEdgeState } from "../shape-types";
-import { buildPath, buildArrowhead, getArrowDirection } from "@/connectors/connector-rendering";
+import { buildPath, buildArrowhead, getArrowDirection, getArrowStartDirection } from "@/connectors/connector-rendering";
 import { FONT } from "../shared/shape-styles";
 
 interface ConnectorShapeProps {
@@ -9,18 +9,29 @@ interface ConnectorShapeProps {
   isSelected: boolean;
   onSelect: (id: string) => void;
   onWaypointDrag: (edgeId: string, wpIndex: number, x: number, y: number) => void;
+  onEndpointDrag?: (edgeId: string, which: "start" | "end", x: number, y: number) => void;
 }
 
-export function ConnectorShape({ edge, isSelected, onSelect, onWaypointDrag }: ConnectorShapeProps) {
+export function ConnectorShape({ edge, isSelected, onSelect, onWaypointDrag, onEndpointDrag }: ConnectorShapeProps) {
   const allPoints = [edge.start, ...edge.waypoints, edge.end];
   const pathD = buildPath(allPoints, edge.curveType);
 
+  // End arrowhead
+  const showEndArrow = edge.arrowEnd === "arrow";
   const { from: arrowFrom, to: arrowTo } = getArrowDirection(allPoints, edge.curveType);
-  const arrowD = buildArrowhead(arrowFrom, arrowTo, 10);
+  const endArrowD = showEndArrow ? buildArrowhead(arrowFrom, arrowTo, 10) : "";
+
+  // Start arrowhead
+  const showStartArrow = edge.arrowStart === "arrow";
+  const { from: startArrowFrom, to: startArrowTo } = getArrowStartDirection(allPoints, edge.curveType);
+  const startArrowD = showStartArrow ? buildArrowhead(startArrowFrom, startArrowTo, 10) : "";
 
   // Label at midpoint
   const midIdx = Math.floor(allPoints.length / 2);
   const mid = allPoints[midIdx];
+
+  const sourceAttached = edge.sourceId !== "";
+  const targetAttached = edge.targetId !== "";
 
   return (
     <Group>
@@ -44,13 +55,24 @@ export function ConnectorShape({ edge, isSelected, onSelect, onWaypointDrag }: C
         lineJoin="round"
         listening={false}
       />
-      {/* Arrowhead — solid filled triangle */}
-      <Path
-        data={arrowD}
-        fill={edge.color}
-        stroke="none"
-        listening={false}
-      />
+      {/* End arrowhead */}
+      {showEndArrow && (
+        <Path
+          data={endArrowD}
+          fill={edge.color}
+          stroke="none"
+          listening={false}
+        />
+      )}
+      {/* Start arrowhead */}
+      {showStartArrow && (
+        <Path
+          data={startArrowD}
+          fill={edge.color}
+          stroke="none"
+          listening={false}
+        />
+      )}
       {/* Label */}
       {edge.label && (() => {
         const labelW = edge.label.length * 7 + 16;
@@ -81,8 +103,8 @@ export function ConnectorShape({ edge, isSelected, onSelect, onWaypointDrag }: C
           </>
         );
       })()}
-      {/* Waypoint handles (only visible when selected) */}
-      {isSelected &&
+      {/* Waypoint handles (only visible when selected, non-freehand) */}
+      {isSelected && edge.curveType !== "freehand" &&
         edge.waypoints.map((wp, i) => (
           <Circle
             key={`wp-${i}`}
@@ -98,8 +120,8 @@ export function ConnectorShape({ edge, isSelected, onSelect, onWaypointDrag }: C
             }}
           />
         ))}
-      {/* Midpoint handles for adding waypoints (only visible when selected) */}
-      {isSelected &&
+      {/* Midpoint indicators (only for non-freehand when selected) */}
+      {isSelected && edge.curveType !== "freehand" &&
         allPoints.slice(0, -1).map((pt, i) => {
           const next = allPoints[i + 1];
           const mx = (pt.x + next.x) / 2;
@@ -118,6 +140,37 @@ export function ConnectorShape({ edge, isSelected, onSelect, onWaypointDrag }: C
             />
           );
         })}
+      {/* Endpoint drag handles (when selected) */}
+      {isSelected && onEndpointDrag && (
+        <>
+          {/* Start endpoint handle */}
+          <Circle
+            x={edge.start.x}
+            y={edge.start.y}
+            radius={7}
+            fill={sourceAttached ? "#2563eb" : "white"}
+            stroke="#2563eb"
+            strokeWidth={2}
+            draggable
+            onDragEnd={(e) => {
+              onEndpointDrag(edge.id, "start", e.target.x(), e.target.y());
+            }}
+          />
+          {/* End endpoint handle */}
+          <Circle
+            x={edge.end.x}
+            y={edge.end.y}
+            radius={7}
+            fill={targetAttached ? "#2563eb" : "white"}
+            stroke="#2563eb"
+            strokeWidth={2}
+            draggable
+            onDragEnd={(e) => {
+              onEndpointDrag(edge.id, "end", e.target.x(), e.target.y());
+            }}
+          />
+        </>
+      )}
     </Group>
   );
 }

@@ -51,6 +51,35 @@ export function updateEdgeInOverlay(
 }
 
 /**
+ * Add a manual (freehand) edge to the overlay.
+ */
+export function addManualEdgeToOverlay(
+  overlay: DiagramOverlay,
+  edgeId: string,
+  edgeData: EdgeOverlay
+): DiagramOverlay {
+  return {
+    ...overlay,
+    edges: {
+      ...overlay.edges,
+      [edgeId]: edgeData,
+    },
+  };
+}
+
+/**
+ * Remove a manual edge from the overlay.
+ */
+export function removeManualEdgeFromOverlay(
+  overlay: DiagramOverlay,
+  edgeId: string
+): DiagramOverlay {
+  const edges = { ...overlay.edges };
+  delete edges[edgeId];
+  return { ...overlay, edges };
+}
+
+/**
  * Remove nodes/edges from overlay that no longer exist in mermaid.
  */
 export function cleanupOverlay(

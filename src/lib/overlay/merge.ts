@@ -31,7 +31,7 @@ export interface CanvasEdge {
   targetId: string;
   label: string;
   waypoints: { x: number; y: number }[];
-  curveType: "straight" | "bezier" | "orthogonal";
+  curveType: "straight" | "bezier" | "orthogonal" | "freehand";
 }
 
 export interface MergeResult {
@@ -149,7 +149,7 @@ export function mergeGraphWithOverlay(
     (id) => !currentMermaidNodeIds.has(id)
   );
   const removedEdgeIds = Object.keys(overlay.edges).filter(
-    (id) => !currentMermaidEdgeIds.has(id)
+    (id) => !id.startsWith("freehand::") && !currentMermaidEdgeIds.has(id)
   );
 
   return { positionedNodes, stagedNodes, edges, removedNodeIds, removedEdgeIds };

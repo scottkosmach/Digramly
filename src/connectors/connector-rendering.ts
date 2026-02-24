@@ -1,6 +1,6 @@
 /** Generate SVG path data from waypoints and curve type */
 
-export type CurveType = "straight" | "bezier" | "orthogonal";
+export type CurveType = "straight" | "bezier" | "orthogonal" | "freehand";
 
 export interface Point {
   x: number;
@@ -21,6 +21,8 @@ export function buildPath(
       return buildBezierPath(points);
     case "orthogonal":
       return buildOrthogonalPath(points);
+    case "freehand":
+      return buildFreehandPath(points);
     default:
       return buildStraightPath(points);
   }
@@ -91,6 +93,36 @@ function buildOrthogonalPath(points: Point[]): string {
   return d;
 }
 
+/**
+ * Build a smooth freehand path using Catmull-Rom splines.
+ * Converts to cubic bezier segments that pass through all points for organic curves.
+ */
+function buildFreehandPath(points: Point[]): string {
+  if (points.length < 2) return "";
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+
+  let d = `M ${points[0].x} ${points[0].y}`;
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+
+    // Catmull-Rom to cubic bezier control points (alpha = 0.5)
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+  }
+
+  return d;
+}
+
 /** Build arrowhead path at the end of a line */
 export function buildArrowhead(
   from: Point,
@@ -141,6 +173,34 @@ export function getArrowDirection(
     return { from, to };
   }
 
+  // For freehand, use the last 2 smoothed points for direction
   // For straight / bezier, the raw last two points are fine
   return { from: points[points.length - 2], to };
+}
+
+/**
+ * Get the first segment direction for start-arrowhead orientation.
+ */
+export function getArrowStartDirection(
+  points: Point[],
+  curveType: CurveType
+): { from: Point; to: Point } {
+  const to = points[0];
+
+  if (curveType === "orthogonal" && points.length >= 2) {
+    const expanded: Point[] = [points[0]];
+    let prev = points[0];
+    for (let i = 1; i < points.length; i++) {
+      const curr = points[i];
+      const bend: Point = { x: curr.x, y: prev.y };
+      if (bend.x !== prev.x || bend.y !== prev.y) {
+        expanded.push(bend);
+      }
+      expanded.push(curr);
+      prev = curr;
+    }
+    return { from: expanded[1], to };
+  }
+
+  return { from: points[1], to };
 }
