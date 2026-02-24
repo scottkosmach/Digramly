@@ -7,11 +7,12 @@
  * - Edge in overlay → use stored waypoints
  * - Edge NOT in overlay → auto-route (use layout bend points)
  */
-import type { MermaidGraph, MermaidNode, MermaidEdge } from "@/lib/mermaid/types";
+import type { MermaidGraph, MermaidNode } from "@/lib/mermaid/types";
 import { MERMAID_SHAPE_TO_TYPE } from "@/lib/mermaid/types";
 import type { LayoutResult } from "@/lib/layout/types";
-import type { DiagramOverlay, NodeOverlay, EdgeOverlay } from "./types";
+import type { DiagramOverlay } from "./types";
 import { SHAPE_DEFAULTS } from "@/shapes/shared/shape-styles";
+import type { NodeShapeType } from "@/shapes/shape-types";
 
 export interface CanvasNode {
   nodeId: string;
@@ -22,7 +23,6 @@ export interface CanvasNode {
   w: number;
   h: number;
   color: string;
-  tldrawShapeId?: string;
 }
 
 export interface CanvasEdge {
@@ -32,7 +32,6 @@ export interface CanvasEdge {
   label: string;
   waypoints: { x: number; y: number }[];
   curveType: "straight" | "bezier" | "orthogonal";
-  tldrawShapeId?: string;
 }
 
 export interface MergeResult {
@@ -79,7 +78,6 @@ export function mergeGraphWithOverlay(
         w: nodeOverlay.w,
         h: nodeOverlay.h,
         color: nodeOverlay.color ?? "blue",
-        tldrawShapeId: nodeOverlay.tldrawShapeId,
       });
     } else if (layoutNode) {
       // No overlay but has layout → auto-place and add to positioned
@@ -120,7 +118,6 @@ export function mergeGraphWithOverlay(
         label: edge.label,
         waypoints: edgeOverlay.waypoints,
         curveType: edgeOverlay.curveType,
-        tldrawShapeId: edgeOverlay.tldrawShapeId,
       });
     } else if (layoutEdge && layoutEdge.bendPoints.length >= 2) {
       edges.push({

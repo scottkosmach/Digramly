@@ -8,7 +8,7 @@ import {
 } from "react-resizable-panels";
 import { CodePanel } from "./CodePanel";
 
-// tldraw must be loaded client-side only (uses browser APIs)
+// Konva requires browser APIs — load client-side only
 const CanvasPanel = dynamic(() => import("./CanvasPanel"), {
   ssr: false,
   loading: () => (

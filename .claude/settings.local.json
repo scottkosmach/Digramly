@@ -25,7 +25,17 @@
       "Bash(netstat:*)",
       "Bash(taskkill:*)",
       "Bash(head:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(cd \"/c/Users/scott/Desktop/HTML - 1 offs/Diagrams\" && npx vercel inspect digramly.vercel.app 2>&1)",
+      "Bash(cd \"/c/Users/scott/Desktop/HTML - 1 offs/Diagrams\" && npx vercel --prod 2>&1)",
+      "Bash(cd \"/c/Users/scott/Desktop/HTML - 1 offs/Diagrams\" && npx vercel --prod --yes 2>&1)",
+      "Bash(cd \"/c/Users/scott/Desktop/HTML - 1 offs/Diagrams\" && npx vercel link --yes --project digramly 2>&1)",
+      "Bash(cd \"/c/Users/scott/Desktop/HTML - 1 offs/Diagrams\" && npx vercel ls --prod 2>&1)",
+      "Bash(tail:*)",
+      "Bash(cd \"/c/Users/scott/Desktop/HTML - 1 offs/Diagrams\" && npx vercel project ls 2>&1)",
+      "Bash(cd \"/c/Users/scott/Desktop/HTML - 1 offs/Diagrams\" && npx vercel env ls 2>&1)",
+      "Bash(npx vercel:*)",
+      "Bash(curl:*)"
     ]
   }
 }

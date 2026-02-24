@@ -5,14 +5,11 @@ import { useDiagramSync } from "@/hooks/useDiagramSync";
 import { StagingArea } from "./StagingArea";
 
 /**
- * Bridge component that lives inside the Tldraw context.
- * Activates the parser and sync hooks, renders the staging area.
+ * Bridge component that activates the parser and sync hooks.
+ * Lives outside the Konva Stage — no canvas context needed.
  */
 export function SyncBridge() {
-  // Parse mermaid code on changes
   useMermaidParser();
-
-  // Sync parsed graph ↔ canvas ↔ overlay
   const { placeStagedNode, placeAllStagedNodes } = useDiagramSync();
 
   return (

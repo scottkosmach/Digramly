@@ -1,39 +1,42 @@
 /**
  * Bidirectional sync orchestrator.
  *
- * Code → Canvas: When parsedGraph changes, merge with overlay, create/update/remove shapes.
- * Canvas → Overlay: When shapes move/resize, update overlay positions.
+ * Code → Canvas: When parsedGraph changes, merge with overlay,
+ *   create/update canvas nodes and edges in Zustand store.
+ * Canvas → Overlay: Handled by drag/resize event handlers in CanvasPanel.
  */
 import { useEffect, useRef, useCallback } from "react";
-import { useEditor, createShapeId } from "tldraw";
-import type { TLShapeId } from "tldraw";
 import { useDiagramStore } from "@/stores/diagram-store";
 import { layoutGraph } from "@/lib/layout/elk-layout";
 import { mergeGraphWithOverlay } from "@/lib/overlay/merge";
-import type { CanvasNode, CanvasEdge } from "@/lib/overlay/merge";
 import { updateNodeInOverlay, updateEdgeInOverlay, cleanupOverlay } from "@/lib/overlay/diff";
+import { computeEdgeEndpoints } from "@/lib/canvas/edge-tracking";
 import type { StagedNode } from "@/lib/overlay/staging";
-import type { DiagramNodeShape, ConnectorShape } from "@/shapes/diagram-shapes";
+import type { CanvasNodeState, CanvasEdgeState, NodeShapeType } from "@/shapes/shape-types";
+import type { MermaidNodeShape } from "@/lib/mermaid/types";
+import { MERMAID_SHAPE_TO_TYPE } from "@/lib/mermaid/types";
+import { SHAPE_DEFAULTS } from "@/shapes/shared/shape-styles";
 
 /**
- * Hook that syncs mermaid graph ↔ tldraw canvas ↔ overlay.
- * Must be used inside a tldraw <Tldraw> context.
+ * Hook that syncs mermaid graph → Zustand canvas state → overlay.
+ * Works directly with Zustand store (no canvas context needed).
  */
 export function useDiagramSync() {
-  const editor = useEditor();
   const parsedGraph = useDiagramStore((s) => s.parsedGraph);
   const overlay = useDiagramStore((s) => s.overlay);
-  const setOverlay = useDiagramStore((s) => s.setOverlay);
   const updateOverlay = useDiagramStore((s) => s.updateOverlay);
   const setStagedNodes = useDiagramStore((s) => s.setStagedNodes);
   const setSyncStatus = useDiagramStore((s) => s.setSyncStatus);
-  const isSyncingToOverlay = useDiagramStore((s) => s.isSyncingToOverlay);
-  const setIsSyncingToOverlay = useDiagramStore((s) => s.setIsSyncingToOverlay);
+  const upsertCanvasNodes = useDiagramStore((s) => s.upsertCanvasNodes);
+  const upsertCanvasEdges = useDiagramStore((s) => s.upsertCanvasEdges);
+  const removeCanvasNodes = useDiagramStore((s) => s.removeCanvasNodes);
+  const removeCanvasEdges = useDiagramStore((s) => s.removeCanvasEdges);
 
-  // Track shape IDs we've created (nodeId/edgeId → tldraw shape ID)
-  const shapeMapRef = useRef<Map<string, TLShapeId>>(new Map());
   // Prevent re-entrant sync
   const isSyncingRef = useRef(false);
+  // Track nodeId→canvasId mapping
+  const nodeIdMapRef = useRef<Map<string, string>>(new Map());
+  const edgeIdMapRef = useRef<Map<string, string>>(new Map());
 
   // ─── Code → Canvas sync ───────────────────────────────────────
   useEffect(() => {
@@ -44,73 +47,67 @@ export function useDiagramSync() {
       setSyncStatus("syncing");
 
       try {
-        // Run ELK layout for positioning new nodes
         const layout = await layoutGraph(parsedGraph);
-
-        // Merge parsed graph + overlay + layout
         const mergeResult = mergeGraphWithOverlay(parsedGraph, overlay, layout);
 
-        // --- Create/update node shapes ---
-        const shapesToCreate: any[] = [];
-        const shapesToUpdate: any[] = [];
+        // --- Create/update node canvas state ---
+        const nodesToUpsert: CanvasNodeState[] = [];
+        const currentNodeIds = new Set<string>();
 
         for (const node of mergeResult.positionedNodes) {
-          const existingId = node.tldrawShapeId
-            ? (node.tldrawShapeId as TLShapeId)
-            : shapeMapRef.current.get(node.nodeId);
-
-          if (existingId && editor.getShape(existingId)) {
-            // Update existing shape
-            shapesToUpdate.push({
-              id: existingId,
-              type: node.shapeType,
-              x: node.x,
-              y: node.y,
-              props: {
-                w: node.w,
-                h: node.h,
-                label: node.label,
-                nodeId: node.nodeId,
-              },
-            });
-          } else {
-            // Create new shape
-            const id = createShapeId();
-            shapeMapRef.current.set(node.nodeId, id);
-            shapesToCreate.push({
-              id,
-              type: node.shapeType,
-              x: node.x,
-              y: node.y,
-              props: {
-                w: node.w,
-                h: node.h,
-                label: node.label,
-                color: node.color || "blue",
-                nodeId: node.nodeId,
-              },
-            });
-
-            // Also record in overlay so subsequent syncs know about it
-            updateOverlay((prev) =>
-              updateNodeInOverlay(prev, node.nodeId, {
-                x: node.x,
-                y: node.y,
-                w: node.w,
-                h: node.h,
-                tldrawShapeId: id,
-              })
-            );
+          // Reuse existing canvas ID or create new one
+          let canvasId = nodeIdMapRef.current.get(node.nodeId);
+          if (!canvasId) {
+            canvasId = crypto.randomUUID();
+            nodeIdMapRef.current.set(node.nodeId, canvasId);
           }
+          currentNodeIds.add(canvasId);
+
+          nodesToUpsert.push({
+            id: canvasId,
+            nodeId: node.nodeId,
+            shapeType: node.shapeType as NodeShapeType,
+            x: node.x,
+            y: node.y,
+            w: node.w,
+            h: node.h,
+            label: node.label,
+            color: (node.color as any) || "blue",
+          });
+
+          // Record in overlay
+          updateOverlay((prev) =>
+            updateNodeInOverlay(prev, node.nodeId, {
+              x: node.x,
+              y: node.y,
+              w: node.w,
+              h: node.h,
+            })
+          );
         }
 
-        // --- Create/update edge (connector) shapes ---
-        for (const edge of mergeResult.edges) {
-          const existingId = edge.tldrawShapeId
-            ? (edge.tldrawShapeId as TLShapeId)
-            : shapeMapRef.current.get(edge.edgeId);
+        // Batch upsert nodes
+        if (nodesToUpsert.length > 0) {
+          upsertCanvasNodes(nodesToUpsert);
+        }
 
-          // Calculate start/end positions from source/target node positions
+        // Build node lookup for edge endpoint computation
+        const nodeMap = new Map<string, CanvasNodeState>();
+        for (const n of nodesToUpsert) nodeMap.set(n.id, n);
+
+        // --- Create/update edge canvas state ---
+        const edgesToUpsert: CanvasEdgeState[] = [];
+        const currentEdgeIds = new Set<string>();
+
+        for (const edge of mergeResult.edges) {
+          let canvasId = edgeIdMapRef.current.get(edge.edgeId);
+          if (!canvasId) {
+            canvasId = crypto.randomUUID();
+            edgeIdMapRef.current.set(edge.edgeId, canvasId);
+          }
+          currentEdgeIds.add(canvasId);
+
+          // Find positioned source/target for endpoint calc
           const sourceNode = mergeResult.positionedNodes.find(
             (n) => n.nodeId === edge.sourceId
           );
@@ -120,77 +117,72 @@ export function useDiagramSync() {
 
           if (!sourceNode || !targetNode) continue;
 
-          // Connect from bottom-center of source to top-center of target (for TD direction)
-          const start = { x: sourceNode.x + sourceNode.w / 2, y: sourceNode.y + sourceNode.h };
-          const end = { x: targetNode.x + targetNode.w / 2, y: targetNode.y };
+          const start = {
+            x: sourceNode.x + sourceNode.w / 2,
+            y: sourceNode.y + sourceNode.h,
+          };
+          const end = {
+            x: targetNode.x + targetNode.w / 2,
+            y: targetNode.y,
+          };
 
-          if (existingId && editor.getShape(existingId)) {
-            shapesToUpdate.push({
-              id: existingId,
-              type: "diagram-connector",
-              props: {
-                start,
-                end,
-                waypoints: edge.waypoints,
-                label: edge.label,
-                edgeId: edge.edgeId,
-              },
-            });
-          } else {
-            const id = createShapeId();
-            shapeMapRef.current.set(edge.edgeId, id);
-            shapesToCreate.push({
-              id,
-              type: "diagram-connector",
-              x: 0,
-              y: 0,
-              props: {
-                start,
-                end,
-                waypoints: edge.waypoints,
-                curveType: edge.curveType,
-                label: edge.label,
-                edgeId: edge.edgeId,
-                color: "#374151",
-              },
-            });
+          const edgeState: CanvasEdgeState = {
+            id: canvasId,
+            edgeId: edge.edgeId,
+            sourceId: edge.sourceId,
+            targetId: edge.targetId,
+            start,
+            end,
+            waypoints: edge.waypoints,
+            curveType: edge.curveType,
+            label: edge.label,
+            color: "#374151",
+          };
 
-            updateOverlay((prev) =>
-              updateEdgeInOverlay(prev, edge.edgeId, {
-                waypoints: edge.waypoints,
-                curveType: edge.curveType,
-                tldrawShapeId: id,
-              })
-            );
+          // Use edge-tracking for smarter endpoint placement
+          const endpoints = computeEdgeEndpoints(edgeState, nodeMap);
+          if (endpoints) {
+            edgeState.start = endpoints.start;
+            edgeState.end = endpoints.end;
           }
+
+          edgesToUpsert.push(edgeState);
+
+          updateOverlay((prev) =>
+            updateEdgeInOverlay(prev, edge.edgeId, {
+              waypoints: edge.waypoints,
+              curveType: edge.curveType,
+            })
+          );
         }
 
-        // --- Remove shapes for deleted nodes/edges ---
-        const shapesToRemove: TLShapeId[] = [];
+        if (edgesToUpsert.length > 0) {
+          upsertCanvasEdges(edgesToUpsert);
+        }
+
+        // --- Remove nodes/edges that no longer exist ---
+        const nodeIdsToRemove: string[] = [];
         for (const nodeId of mergeResult.removedNodeIds) {
-          const shapeId = shapeMapRef.current.get(nodeId);
-          if (shapeId) {
-            shapesToRemove.push(shapeId);
-            shapeMapRef.current.delete(nodeId);
+          const canvasId = nodeIdMapRef.current.get(nodeId);
+          if (canvasId) {
+            nodeIdsToRemove.push(canvasId);
+            nodeIdMapRef.current.delete(nodeId);
           }
         }
-        for (const edgeId of mergeResult.removedEdgeIds) {
-          const shapeId = shapeMapRef.current.get(edgeId);
-          if (shapeId) {
-            shapesToRemove.push(shapeId);
-            shapeMapRef.current.delete(edgeId);
-          }
+        if (nodeIdsToRemove.length > 0) {
+          removeCanvasNodes(nodeIdsToRemove);
         }
 
-        // Apply all changes in a batch
-        if (shapesToCreate.length > 0) {
-          editor.createShapes(shapesToCreate);
+        const edgeIdsToRemove: string[] = [];
+        for (const edgeId of mergeResult.removedEdgeIds) {
+          const canvasId = edgeIdMapRef.current.get(edgeId);
+          if (canvasId) {
+            edgeIdsToRemove.push(canvasId);
+            edgeIdMapRef.current.delete(edgeId);
+          }
         }
-        if (shapesToUpdate.length > 0) {
-          editor.updateShapes(shapesToUpdate);
-        }
-        if (shapesToRemove.length > 0) {
-          editor.deleteShapes(shapesToRemove);
+        if (edgeIdsToRemove.length > 0) {
+          removeCanvasEdges(edgeIdsToRemove);
         }
 
         // Clean up overlay
@@ -215,63 +207,6 @@ export function useDiagramSync() {
     syncToCanvas();
   }, [parsedGraph]); // Only re-run when parsedGraph changes
 
-  // ─── Canvas → Overlay sync ────────────────────────────────────
-  // Listen to tldraw store changes and update overlay positions
-  useEffect(() => {
-    const unsubscribe = editor.store.listen(
-      ({ changes }) => {
-        // Don't sync if we're currently pushing code→canvas
-        if (isSyncingRef.current) return;
-
-        const { updated } = changes;
-        if (!updated) return;
-
-        let overlayChanged = false;
-        let newOverlay = useDiagramStore.getState().overlay;
-
-        for (const [_from, to] of Object.values(updated)) {
-          const shape = to as any;
-          if (!shape.typeName || shape.typeName !== "shape") continue;
-
-          // Node shapes → update position in overlay
-          if (shape.type?.startsWith("diagram-") && shape.type !== "diagram-connector") {
-            const nodeId = shape.props?.nodeId;
-            if (!nodeId) continue;
-
-            newOverlay = updateNodeInOverlay(newOverlay, nodeId, {
-              x: shape.x,
-              y: shape.y,
-              w: shape.props.w,
-              h: shape.props.h,
-              tldrawShapeId: shape.id,
-            });
-            overlayChanged = true;
-          }
-
-          // Connector shapes → update waypoints in overlay
-          if (shape.type === "diagram-connector") {
-            const edgeId = shape.props?.edgeId;
-            if (!edgeId) continue;
-
-            newOverlay = updateEdgeInOverlay(newOverlay, edgeId, {
-              waypoints: shape.props.waypoints,
-              curveType: shape.props.curveType,
-              tldrawShapeId: shape.id,
-            });
-            overlayChanged = true;
-          }
-        }
-
-        if (overlayChanged) {
-          setOverlay(newOverlay);
-        }
-      },
-      { source: "user", scope: "document" }
-    );
-
-    return unsubscribe;
-  }, [editor, setOverlay]);
-
   // ─── Place staged node on canvas ──────────────────────────────
   const placeStagedNode = useCallback(
     (nodeId: string, x: number, y: number) => {
@@ -279,56 +214,32 @@ export function useDiagramSync() {
       const staged = store.stagedNodes.find((n) => n.id === nodeId);
       if (!staged) return;
 
-      const id = createShapeId();
-      const shapeType =
-        staged.shape === "box"
-          ? "diagram-box"
-          : staged.shape === "round"
-            ? "diagram-rounded-rect"
-            : staged.shape === "diamond"
-              ? "diagram-diamond"
-              : staged.shape === "cylinder"
-                ? "diagram-cylinder"
-                : staged.shape === "circle"
-                  ? "diagram-circle"
-                  : staged.shape === "stadium"
-                    ? "diagram-stadium"
-                    : "diagram-box";
+      const shapeType = (MERMAID_SHAPE_TO_TYPE[staged.shape] || "box") as NodeShapeType;
+      const w = SHAPE_DEFAULTS.w;
+      const h = SHAPE_DEFAULTS.h;
+      const canvasId = crypto.randomUUID();
 
-      const w = 160;
-      const h = 70;
+      nodeIdMapRef.current.set(nodeId, canvasId);
 
-      editor.createShapes([
-        {
-          id,
-          type: shapeType,
-          x,
-          y,
-          props: {
-            w,
-            h,
-            label: staged.label,
-            color: "blue",
-            nodeId: staged.id,
-          },
-        },
-      ]);
+      store.upsertCanvasNode({
+        id: canvasId,
+        nodeId,
+        shapeType,
+        x,
+        y,
+        w,
+        h,
+        label: staged.label,
+        color: "blue",
+      });
 
-      shapeMapRef.current.set(nodeId, id);
-
-      updateOverlay((prev) =>
-        updateNodeInOverlay(prev, nodeId, {
-          x,
-          y,
-          w,
-          h,
-          tldrawShapeId: id,
-        })
+      store.updateOverlay((prev) =>
+        updateNodeInOverlay(prev, nodeId, { x, y, w, h })
       );
 
       store.removeStagedNode(nodeId);
     },
-    [editor, updateOverlay]
+    []
   );
 
   // ─── Place all staged nodes ───────────────────────────────────
@@ -338,12 +249,10 @@ export function useDiagramSync() {
     if (staged.length === 0) return;
 
     // Find a clear area on canvas (below existing shapes)
-    const allShapes = editor.getCurrentPageShapes();
     let maxY = 0;
-    for (const s of allShapes) {
-      const bounds = editor.getShapeGeometry(s).bounds;
-      const shapeBottom = s.y + bounds.h;
-      if (shapeBottom > maxY) maxY = shapeBottom;
+    for (const n of store.canvasNodes.values()) {
+      const bottom = n.y + n.h;
+      if (bottom > maxY) maxY = bottom;
     }
 
     const startY = maxY + 60;
@@ -358,7 +267,7 @@ export function useDiagramSync() {
         startY + row * 100
       );
     });
-  }, [editor, placeStagedNode]);
+  }, [placeStagedNode]);
 
   return { placeStagedNode, placeAllStagedNodes };
 }

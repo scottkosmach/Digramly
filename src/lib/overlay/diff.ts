@@ -1,7 +1,6 @@
 /**
  * Diff logic: canvas changes → overlay updates.
- * Listens to tldraw shape changes and updates the overlay accordingly.
- * Does NOT modify Mermaid code — only updates positions/styles.
+ * Updates overlay positions when shapes move/resize on canvas.
  */
 import type { DiagramOverlay, NodeOverlay, EdgeOverlay } from "./types";
 

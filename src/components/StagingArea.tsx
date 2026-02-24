@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import { useDiagramStore } from "@/stores/diagram-store";
-import { MERMAID_SHAPE_TO_TYPE } from "@/lib/mermaid/types";
 
 interface StagingAreaProps {
   onPlaceNode: (nodeId: string, x: number, y: number) => void;

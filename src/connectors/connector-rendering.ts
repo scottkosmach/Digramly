@@ -106,5 +106,41 @@ export function buildArrowhead(
     x: to.x - size * Math.cos(angle + Math.PI / 6),
     y: to.y - size * Math.sin(angle + Math.PI / 6),
   };
-  return `M ${left.x} ${left.y} L ${to.x} ${to.y} L ${right.x} ${right.y}`;
+  return `M ${left.x} ${left.y} L ${to.x} ${to.y} L ${right.x} ${right.y} Z`;
+}
+
+/**
+ * Get the final segment direction for arrowhead orientation.
+ * For orthogonal paths the raw last-two-points trick picks up the
+ * horizontal leg instead of the final vertical approach. This helper
+ * returns the correct {from, to} pair by looking at the actual last
+ * straight segment in the path.
+ */
+export function getArrowDirection(
+  points: Point[],
+  curveType: CurveType
+): { from: Point; to: Point } {
+  const to = points[points.length - 1];
+
+  if (curveType === "orthogonal" && points.length >= 2) {
+    // Reconstruct orthogonal waypoints to find the real final segment
+    const expanded: Point[] = [points[0]];
+    let prev = points[0];
+    for (let i = 1; i < points.length; i++) {
+      const curr = points[i];
+      const bend: Point = { x: curr.x, y: prev.y };
+      // Only add the bend if it's not the same as prev or curr
+      if (bend.x !== prev.x || bend.y !== prev.y) {
+        expanded.push(bend);
+      }
+      expanded.push(curr);
+      prev = curr;
+    }
+    // The final segment is the last two points of the expanded path
+    const from = expanded[expanded.length - 2];
+    return { from, to };
+  }
+
+  // For straight / bezier, the raw last two points are fine
+  return { from: points[points.length - 2], to };
 }

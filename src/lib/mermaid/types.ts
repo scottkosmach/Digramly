@@ -35,12 +35,12 @@ export interface MermaidGraph {
   subgraphs: MermaidSubGraph[];
 }
 
-/** Map from Mermaid shape syntax to our diagram shape type names */
+/** Map from Mermaid shape syntax to our Konva shape type names */
 export const MERMAID_SHAPE_TO_TYPE: Record<MermaidNodeShape, string> = {
-  box: "diagram-box",
-  round: "diagram-rounded-rect",
-  stadium: "diagram-stadium",
-  diamond: "diagram-diamond",
-  cylinder: "diagram-cylinder",
-  circle: "diagram-circle",
+  box: "box",
+  round: "rounded-rect",
+  stadium: "stadium",
+  diamond: "diamond",
+  cylinder: "cylinder",
+  circle: "circle",
 };

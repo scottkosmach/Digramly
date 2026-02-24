@@ -6,13 +6,11 @@ export interface NodeOverlay {
   w: number;
   h: number;
   color?: string;
-  tldrawShapeId?: string;
 }
 
 export interface EdgeOverlay {
   waypoints: { x: number; y: number }[];
   curveType: "straight" | "bezier" | "orthogonal";
-  tldrawShapeId?: string;
 }
 
 export interface DiagramOverlay {
